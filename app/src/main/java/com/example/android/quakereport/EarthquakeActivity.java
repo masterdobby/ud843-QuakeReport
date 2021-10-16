@@ -15,7 +15,12 @@
  */
 package com.example.android.quakereport;
 
+import android.app.LoaderManager;
+import android.content.Context;
 import android.content.Intent;
+import android.content.Loader;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -23,26 +28,32 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.text.TextUtils;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
-public class EarthquakeActivity extends AppCompatActivity {
+public class EarthquakeActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<List<Earthquake>> {
 
     public static final String LOG_TAG = EarthquakeActivity.class.getName();
 
-    private static final String USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&eventtype=earthquake&orderby=time&minmag=6&limit=10";
+    public static final String USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&eventtype=earthquake&orderby=time&minmag=6&limit=10";
 
     private EarthquakeAdapter adapter;
+
+    private TextView emptyStateView;
+
+    private ProgressBar loadingSpinner;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.earthquake_activity);
+
+        emptyStateView = (TextView) findViewById(R.id.empty_view);
+        loadingSpinner = (ProgressBar) findViewById(R.id.loading_spinner);
 
         // Create a fake list of earthquake locations.
         /*ArrayList<Earthquake> earthquakes = new ArrayList<>();
@@ -56,6 +67,7 @@ public class EarthquakeActivity extends AppCompatActivity {
 
         // Find a reference to the {@link ListView} in the layout
         ListView earthquakeListView = (ListView) findViewById(R.id.list);
+        earthquakeListView.setEmptyView(emptyStateView);
 
         // Create a new {@link ArrayAdapter} of earthquakes
         adapter = new EarthquakeAdapter(this, new ArrayList<>());
@@ -70,8 +82,43 @@ public class EarthquakeActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        EarthquakeAsyncTask task = new EarthquakeAsyncTask();
-        task.execute(USGS_URL);
+//        EarthquakeAsyncTask task = new EarthquakeAsyncTask();
+//        task.execute(USGS_URL);
+
+        if (isConnectedToInternet()) {
+            getLoaderManager().initLoader(0, null, this);
+        } else {
+            loadingSpinner.setVisibility(View.GONE);
+            emptyStateView.setText(R.string.no_internet);
+        }
+    }
+
+    private boolean isConnectedToInternet() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+
+        NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+        return activeNetwork != null && activeNetwork.isConnectedOrConnecting();
+    }
+
+    @Override
+    public Loader<List<Earthquake>> onCreateLoader(int id, Bundle args) {
+        return new EarthquakeLoader(this, USGS_URL);
+    }
+
+    @Override
+    public void onLoadFinished(Loader<List<Earthquake>> loader, List<Earthquake> earthquakes) {
+        loadingSpinner.setVisibility(View.GONE);
+        emptyStateView.setText(R.string.earthquakes_not_found);
+
+        adapter.clear();
+        if (earthquakes != null && !earthquakes.isEmpty()) {
+            adapter.addAll(earthquakes);
+        }
+    }
+
+    @Override
+    public void onLoaderReset(Loader<List<Earthquake>> loader) {
+        adapter.clear();
     }
 
     class EarthquakeAsyncTask extends AsyncTask<String, Void, List<Earthquake>> {
@@ -88,7 +135,7 @@ public class EarthquakeActivity extends AppCompatActivity {
         @Override
         protected void onPostExecute(List<Earthquake> earthquakes) {
             adapter.clear();
-            if (earthquakes != null && earthquakes.size() > 0) {
+            if (earthquakes != null && !earthquakes.isEmpty()) {
                 adapter.addAll(earthquakes);
             }
         }
